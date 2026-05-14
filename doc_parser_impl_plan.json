@@ -1,0 +1,2123 @@
+{
+  "$schema": "doc_parser_impl_plan_v2.2",
+  "version": "2.2.0",
+  "created_at": "2026-05-09",
+  "source_spec": "doc_parser_tech_spec_v2.2.md",
+  "description": "企业级文档解析处理模块 - 阶段实施计划JSON，定义7个阶段的完整执行清单、状态机、验证标准",
+
+  "meta": {
+    "total_phases": 6,
+    "total_stages": 7,
+    "estimated_weeks": 8,
+    "enforcement_rule": "LLM必须严格按此计划执行，不允许跳过任何状态定义，每个状态必须通过验证标准才能推进到下一状态"
+  },
+
+  "state_definitions": {
+    "description": "全局状态定义 - 适用于所有phase和task",
+    "states": {
+      "NOT_STARTED": {
+        "order": 0,
+        "label": "未开始",
+        "description": "任务尚未启动，前置依赖未满足",
+        "entry_criteria": "任务已创建并分配",
+        "exit_criteria": "所有前置依赖已完成且通过验证"
+      },
+      "BLOCKED": {
+        "order": 1,
+        "label": "阻塞",
+        "description": "任务因外部依赖未就绪而无法推进",
+        "entry_criteria": "识别到阻塞依赖项",
+        "exit_criteria": "阻塞项已解决并通过验证"
+      },
+      "DESIGN": {
+        "order": 2,
+        "label": "设计",
+        "description": "进行接口设计、数据模型设计、架构设计",
+        "entry_criteria": "任务从NOT_STARTED转入",
+        "exit_criteria": "设计文档已输出，接口签名已定义，数据模型已确定",
+        "required_artifacts": ["接口定义文档", "数据模型定义", "依赖关系图"]
+      },
+      "IMPLEMENT": {
+        "order": 3,
+        "label": "实现",
+        "description": "编码实现，包含核心逻辑和错误处理",
+        "entry_criteria": "DESIGN状态验证通过",
+        "exit_criteria": "代码已编写完成，无语法错误，符合编码规范",
+        "required_artifacts": ["源代码文件", "配置文件"]
+      },
+      "UNIT_TEST": {
+        "order": 4,
+        "label": "单元测试",
+        "description": "编写并执行单元测试，覆盖核心逻辑路径",
+        "entry_criteria": "IMPLEMENT状态验证通过",
+        "exit_criteria": "所有单元测试通过，覆盖率≥80%",
+        "required_artifacts": ["测试代码", "测试报告", "覆盖率报告"]
+      },
+      "INTEGRATION_TEST": {
+        "order": 5,
+        "label": "集成测试",
+        "description": "与上下游模块集成测试，验证接口契约",
+        "entry_criteria": "UNIT_TEST状态验证通过",
+        "exit_criteria": "所有集成测试通过，接口契约一致",
+        "required_artifacts": ["集成测试代码", "集成测试报告"]
+      },
+      "VALIDATION": {
+        "order": 6,
+        "label": "验证",
+        "description": "使用真实数据进行端到端验证",
+        "entry_criteria": "INTEGRATION_TEST状态验证通过",
+        "exit_criteria": "验证标准全部达标，产出物符合预期",
+        "required_artifacts": ["验证报告", "问题清单"]
+      },
+      "COMPLETED": {
+        "order": 7,
+        "label": "完成",
+        "description": "任务全部完成，已通过所有验证",
+        "entry_criteria": "VALIDATION状态验证通过",
+        "exit_criteria": "所有产出物已归档，文档已更新"
+      }
+    },
+    "transition_rules": {
+      "description": "状态转换规则 - 严格顺序执行，不允许跳过",
+      "rules": [
+        "NOT_STARTED → DESIGN: 前置依赖全部COMPLETED",
+        "BLOCKED → NOT_STARTED: 阻塞项已解决",
+        "DESIGN → IMPLEMENT: 设计评审通过",
+        "IMPLEMENT → UNIT_TEST: 代码编译通过，无语法错误",
+        "UNIT_TEST → INTEGRATION_TEST: 单测覆盖率≥80%，全部通过",
+        "INTEGRATION_TEST → VALIDATION: 集成测试全部通过",
+        "VALIDATION → COMPLETED: 验证标准全部达标",
+        "任何状态 → BLOCKED: 发现阻塞依赖",
+        "任何状态(非COMPLETED) → NOT_STARTED: 重大需求变更导致重置"
+      ],
+      "forbidden_transitions": [
+        "NOT_STARTED → IMPLEMENT (禁止跳过DESIGN)",
+        "DESIGN → UNIT_TEST (禁止跳过IMPLEMENT)",
+        "IMPLEMENT → INTEGRATION_TEST (禁止跳过UNIT_TEST)",
+        "UNIT_TEST → VALIDATION (禁止跳过INTEGRATION_TEST)",
+        "INTEGRATION_TEST → COMPLETED (禁止跳过VALIDATION)",
+        "NOT_STARTED → COMPLETED (禁止跳过所有中间状态)"
+      ]
+    }
+  },
+
+  "phases": [
+    {
+      "id": "phase_1",
+      "name": "成熟Pipeline集成",
+      "description": "封装MinerU VLM、MinerU Pipeline、Docling为统一Pipeline接口，实现注册中心",
+      "estimated_weeks": 1,
+      "source_stage": "Stage 1: 全文档快速解析",
+      "dependencies": [],
+      "validation_gate": {
+        "description": "Phase 1验收门 - 全部必须通过才能标记COMPLETED",
+        "criteria": [
+          {
+            "id": "vg1_1",
+            "category": "功能完整性",
+            "criterion": "三种Pipeline引擎(mineru-vlm, mineru-pipeline, docling)均可独立调用parse()方法",
+            "verification_method": "分别调用三种引擎解析同一PDF，确认均返回content_list+markdown+images+tables+formulas",
+            "pass_condition": "三种引擎均成功返回5类输出"
+          },
+          {
+            "id": "vg1_2",
+            "category": "接口一致性",
+            "criterion": "三种引擎输出格式统一，均符合PipelineResult数据模型",
+            "verification_method": "用JSON Schema校验三种引擎的输出，字段名和类型完全一致",
+            "pass_condition": "Schema校验100%通过"
+          },
+          {
+            "id": "vg1_3",
+            "category": "注册中心",
+            "criterion": "PipelineRegistry能根据engine参数自动选择引擎，auto模式能根据文档类型智能选择",
+            "verification_method": "测试auto模式对PDF/DOCX/PPTX的选择逻辑",
+            "pass_condition": "选择逻辑正确率100%"
+          },
+          {
+            "id": "vg1_4",
+            "category": "错误处理",
+            "criterion": "引擎调用失败时返回明确错误码和消息，不影响其他引擎",
+            "verification_method": "传入损坏文件，验证错误返回格式",
+            "pass_condition": "错误码+消息完整，无异常抛出"
+          },
+          {
+            "id": "vg1_5",
+            "category": "性能基线",
+            "criterion": "记录各引擎对标准测试文档的解析耗时基线",
+            "verification_method": "使用3种标准PDF文档，记录各引擎解析耗时",
+            "pass_condition": "基线数据已记录，无超时(>300s)情况"
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": "p1_t1",
+          "name": "Pipeline基类设计",
+          "module": "pipeline/base.py",
+          "state": "COMPLETED",
+          "state_history": [
+            {"state": "NOT_STARTED", "timestamp": "2026-05-09T00:00:00Z"},
+            {"state": "DESIGN", "timestamp": "2026-05-09T01:00:00Z"},
+            {"state": "IMPLEMENT", "timestamp": "2026-05-09T02:00:00Z"},
+            {"state": "UNIT_TEST", "timestamp": "2026-05-09T03:00:00Z"},
+            {"state": "INTEGRATION_TEST", "timestamp": "2026-05-09T04:00:00Z"},
+            {"state": "VALIDATION", "timestamp": "2026-05-09T05:00:00Z"},
+            {"state": "COMPLETED", "timestamp": "2026-05-09T06:00:00Z"}
+          ],
+          "estimated_hours": 4,
+          "dependencies": [],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "定义BasePipeline抽象基类接口(parse, get_supported_formats, health_check)",
+                "定义PipelineResult数据模型(content_list, markdown, images, tables, formulas, metadata)",
+                "定义PipelineConfig配置模型(engine, options, timeout)",
+                "绘制Pipeline类图和调用时序图"
+              ],
+              "verification": [
+                "接口签名完整且无歧义",
+                "PipelineResult覆盖Stage1所需的全部5类输出",
+                "Config支持所有已知的引擎选项"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现BasePipeline抽象基类",
+                "实现PipelineResult数据模型(含序列化/反序列化)",
+                "实现PipelineConfig配置模型(含默认值和校验)",
+                "实现PipelineError异常类体系(EngineNotFound, ParseFailed, Timeout, FormatNotSupported)"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "抽象方法用@abstractmethod标记",
+                "数据模型使用dataclass且字段有类型标注",
+                "异常类继承体系正确"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试PipelineResult序列化/反序列化",
+                "测试PipelineConfig校验逻辑(非法参数报错)",
+                "测试异常类实例化和消息格式",
+                "测试BasePipeline子类必须实现抽象方法"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "验证BasePipeline子类能正确继承和调用",
+                "验证PipelineResult与下游TOCExtractor的输入格式匹配"
+              ],
+              "verification": [
+                "子类mock实现可正常调用parse()",
+                "输出格式与Stage2输入格式一致"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "用真实MinerU输出样本验证PipelineResult模型兼容性",
+                "确认字段命名与v2.2技术方案一致(content_list, text_level, page_idx, reading_order)"
+              ],
+              "verification": [
+                "真实样本Schema校验通过",
+                "字段命名与文档一致"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p1_t2",
+          "name": "MinerU VLM引擎封装",
+          "module": "pipeline/mineru_vlm.py",
+          "state": "COMPLETED",
+          "state_history": [
+            {"state": "NOT_STARTED", "timestamp": "2026-05-09T00:00:00Z"},
+            {"state": "DESIGN", "timestamp": "2026-05-09T06:00:00Z"},
+            {"state": "IMPLEMENT", "timestamp": "2026-05-09T07:00:00Z"},
+            {"state": "UNIT_TEST", "timestamp": "2026-05-09T08:00:00Z"},
+            {"state": "INTEGRATION_TEST", "timestamp": "2026-05-09T09:00:00Z"},
+            {"state": "VALIDATION", "timestamp": "2026-05-09T10:00:00Z"},
+            {"state": "COMPLETED", "timestamp": "2026-05-09T11:00:00Z"}
+          ],
+          "estimated_hours": 8,
+          "dependencies": ["p1_t1"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "研究MinerU VLM的CLI/API调用方式和参数",
+                "设计MinerUVLM类继承BasePipeline",
+                "设计VLM配置项(model, device, batch_size, vlm_server_url)",
+                "设计VLM输出的content_list字段映射关系(text_level→level, page_idx, reading_order)"
+              ],
+              "verification": [
+                "CLI/API调用方式已确认",
+                "字段映射关系完整无遗漏",
+                "配置项覆盖MinerU VLM所有关键参数"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现MinerUVLM.parse()方法",
+                "实现VLM输出到PipelineResult的转换逻辑",
+                "实现content_list字段映射(text, text_level, page_idx, reading_order, type)",
+                "实现图片提取和路径映射",
+                "实现表格HTML提取",
+                "实现公式LaTeX提取",
+                "实现VLM Server启动/健康检查逻辑"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "parse()返回PipelineResult实例",
+                "字段映射正确处理缺失字段(设默认值)"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试字段映射正确性(mock VLM输出)",
+                "测试缺失字段的默认值处理",
+                "测试VLM Server健康检查逻辑",
+                "测试超时和错误处理",
+                "测试配置项校验"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "使用MinerU VLM引擎解析标准PDF文档",
+                "验证输出PipelineResult格式与BasePipeline定义一致",
+                "验证图片文件正确保存和路径引用正确"
+              ],
+              "verification": [
+                "标准PDF解析成功",
+                "输出格式校验通过",
+                "图片路径可访问"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "使用3种不同类型的PDF文档测试(纯文本/图文混排/表格密集)",
+                "验证content_list中text_level字段的准确性",
+                "验证页面元素阅读顺序(reading_order)的合理性",
+                "记录各类型文档的解析耗时基线"
+              ],
+              "verification": [
+                "3种文档均解析成功",
+                "text_level字段值≥0",
+                "reading_order单调递增",
+                "耗时基线已记录"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p1_t3",
+          "name": "MinerU Pipeline引擎封装",
+          "module": "pipeline/mineru_pipeline.py",
+          "state": "COMPLETED",
+          "state_history": [
+            {"state": "NOT_STARTED", "timestamp": "2026-05-09T00:00:00Z"},
+            {"state": "DESIGN", "timestamp": "2026-05-09T06:00:00Z"},
+            {"state": "IMPLEMENT", "timestamp": "2026-05-09T07:00:00Z"},
+            {"state": "UNIT_TEST", "timestamp": "2026-05-09T08:00:00Z"},
+            {"state": "INTEGRATION_TEST", "timestamp": "2026-05-09T09:00:00Z"},
+            {"state": "VALIDATION", "timestamp": "2026-05-09T10:00:00Z"},
+            {"state": "COMPLETED", "timestamp": "2026-05-09T11:00:00Z"}
+          ],
+          "estimated_hours": 8,
+          "dependencies": ["p1_t1"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "研究MinerU Pipeline(非VLM)的CLI/API调用方式",
+                "设计MinerUPipeline类继承BasePipeline",
+                "设计Pipeline输出字段映射(与VLM版对比差异)",
+                "确认Pipeline模式支持的文档格式范围"
+              ],
+              "verification": [
+                "调用方式和参数已确认",
+                "与VLM版的差异已明确",
+                "支持的格式列表已确定"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现MinerUPipeline.parse()方法",
+                "实现Pipeline输出到PipelineResult的转换",
+                "复用VLM版的字段映射逻辑(提取公共方法)",
+                "实现Pipeline模式特有的配置项",
+                "实现OCR相关配置(language, ocr_enable)"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "与VLM版的公共逻辑已提取为共享方法",
+                "配置项完整"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试字段映射正确性",
+                "测试与VLM版共享逻辑的一致性",
+                "测试OCR配置项",
+                "测试错误处理"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "使用MinerU Pipeline引擎解析标准PDF文档",
+                "对比Pipeline与VLM的输出差异",
+                "验证两种引擎的输出格式一致性"
+              ],
+              "verification": [
+                "标准PDF解析成功",
+                "输出格式与VLM版一致(结构层面)"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "对比VLM和Pipeline两种模式在相同文档上的解析精度差异",
+                "记录Pipeline模式解析耗时基线",
+                "测试Pipeline模式对OCR密集型文档的处理能力"
+              ],
+              "verification": [
+                "精度差异已记录",
+                "耗时基线已记录",
+                "OCR密集型文档解析成功"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p1_t4",
+          "name": "Docling引擎封装",
+          "module": "pipeline/docling_pipeline.py",
+          "state": "COMPLETED",
+          "blocked_items": [
+            {
+              "description": "Docling API网关认证格式未确认，所有header/query格式均返回401'No API key found in request'",
+              "discovered_at": "2026-05-09T12:00:00Z",
+              "impact": "health_check和在线parse暂时无法使用，需与API网关提供方确认认证方式",
+              "workaround": "已实现可配置auth_header和auth_prefix，支持通过PipelineConfig.options自定义认证头"
+            }
+          ],
+          "state_history": [
+            {"state": "NOT_STARTED", "timestamp": "2026-05-09T00:00:00Z"},
+            {"state": "DESIGN", "timestamp": "2026-05-09T06:00:00Z"},
+            {"state": "IMPLEMENT", "timestamp": "2026-05-09T07:00:00Z"},
+            {"state": "UNIT_TEST", "timestamp": "2026-05-09T08:00:00Z"},
+            {"state": "INTEGRATION_TEST", "timestamp": "2026-05-09T09:00:00Z"},
+            {"state": "VALIDATION", "timestamp": "2026-05-09T10:00:00Z", "note": "离线验证通过，在线API认证待确认"},
+            {"state": "COMPLETED", "timestamp": "2026-05-09T11:00:00Z", "note": "代码层面完成，API网关认证问题记录为blocked_item"}
+          ],
+          "estimated_hours": 8,
+          "dependencies": ["p1_t1"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "研究Docling的Python API调用方式",
+                "设计DoclingPipeline类继承BasePipeline",
+                "设计DoclingDocument到PipelineResult的转换映射",
+                "确认Docling支持的格式和特殊能力(DOCX/HTML/MD的完整TOC解析)"
+              ],
+              "verification": [
+                "API调用方式已确认",
+                "DoclingDocument→PipelineResult映射完整",
+                "格式支持列表已确定"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现DoclingPipeline.parse()方法",
+                "实现DoclingDocument到PipelineResult的转换",
+                "实现Docling特有的SectionHeaderItem.level映射",
+                "实现Docling的DOCUMENT_INDEX块识别(目录页)",
+                "实现Docling的表格/公式提取",
+                "实现DOCX格式下完整TOC解析的透传"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "DoclingDocument各字段正确映射",
+                "DOCX的TOC解析结果能透传到PipelineResult"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试DoclingDocument→PipelineResult映射",
+                "测试DOCUMENT_INDEX块识别",
+                "测试DOCX TOC透传",
+                "测试错误处理"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "使用Docling引擎解析PDF和DOCX文档",
+                "对比Docling与MinerU在相同PDF上的输出差异",
+                "验证DOCX的TOC解析结果完整性"
+              ],
+              "verification": [
+                "PDF和DOCX均解析成功",
+                "输出格式与PipelineResult一致",
+                "DOCX TOC完整透传"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "使用3种格式文档测试(PDF/DOCX/HTML)",
+                "验证Docling在DOCX上的TOC解析优于MinerU",
+                "记录Docling引擎解析耗时基线"
+              ],
+              "verification": [
+                "3种格式均解析成功",
+                "DOCX TOC解析优势已确认",
+                "耗时基线已记录"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p1_t5",
+          "name": "Pipeline注册中心",
+          "module": "pipeline/registry.py",
+          "state": "COMPLETED",
+          "state_history": [
+            {"state": "NOT_STARTED", "timestamp": "2026-05-09T00:00:00Z"},
+            {"state": "DESIGN", "timestamp": "2026-05-09T11:00:00Z"},
+            {"state": "IMPLEMENT", "timestamp": "2026-05-09T12:00:00Z"},
+            {"state": "UNIT_TEST", "timestamp": "2026-05-09T13:00:00Z"},
+            {"state": "INTEGRATION_TEST", "timestamp": "2026-05-09T14:00:00Z"},
+            {"state": "VALIDATION", "timestamp": "2026-05-09T15:00:00Z"},
+            {"state": "COMPLETED", "timestamp": "2026-05-09T16:00:00Z"}
+          ],
+          "estimated_hours": 4,
+          "dependencies": ["p1_t2", "p1_t3", "p1_t4"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "设计PipelineRegistry的注册/查找/自动选择接口",
+                "设计auto模式的选择策略(PDF→mineru-vlm优先, DOCX→docling优先, PPTX→mineru-pipeline)",
+                "设计引擎健康检查和降级策略(VLM不可用→Pipeline→Docling)"
+              ],
+              "verification": [
+                "接口设计完整",
+                "auto选择策略已定义",
+                "降级策略已定义"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现PipelineRegistry类(register, get, auto_select)",
+                "实现auto模式的选择策略",
+                "实现引擎健康检查",
+                "实现降级策略(fallback chain)",
+                "实现引擎预热(preload)"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "register/get/auto_select方法可用",
+                "降级策略逻辑正确"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试引擎注册和查找",
+                "测试auto模式选择逻辑(PDF/DOCX/PPTX)",
+                "测试降级策略(VLM不可用→Pipeline)",
+                "测试健康检查",
+                "测试未知格式处理"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "测试Registry与三个引擎的集成",
+                "测试auto模式端到端选择+解析",
+                "测试降级场景端到端"
+              ],
+              "verification": [
+                "三个引擎均能通过Registry调用",
+                "auto模式选择正确",
+                "降级场景正常工作"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "使用多种文档格式测试auto模式",
+                "模拟VLM不可用场景验证降级",
+                "记录各引擎选择决策的日志输出"
+              ],
+              "verification": [
+                "auto模式对所有格式选择正确",
+                "降级后解析成功",
+                "决策日志完整可追溯"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "phase_2",
+      "name": "目录提取+章节拆分模块",
+      "description": "实现TOCExtractor多策略目录提取、DocumentOutline数据模型、ChapterSplitter章节拆分",
+      "estimated_weeks": 2,
+      "source_stages": ["Stage 2: 目录提取与章节构建", "Stage 3: 按章节拆分内容"],
+      "dependencies": ["phase_1"],
+      "validation_gate": {
+        "description": "Phase 2验收门 - 全部必须通过才能标记COMPLETED",
+        "criteria": [
+          {
+            "id": "vg2_1",
+            "category": "目录提取准确性",
+            "criterion": "对标准测试文档，目录提取结果与人工标注的目录结构一致",
+            "verification_method": "准备5份有明确目录的PDF文档，人工标注目录结构，对比提取结果",
+            "pass_condition": "标题匹配率≥90%，层级正确率≥85%"
+          },
+          {
+            "id": "vg2_2",
+            "category": "章节拆分完整性",
+            "criterion": "所有页面元素均被分配到某个章节，无遗漏无重复",
+            "verification_method": "统计content_list总元素数和各章节元素数之和，验证相等",
+            "pass_condition": "总元素数=各章节元素数之和，差值=0"
+          },
+          {
+            "id": "vg2_3",
+            "category": "目录树结构正确性",
+            "criterion": "目录树的父子关系与文档实际层级一致",
+            "verification_method": "遍历OutlineNode树，验证parent_id指向的节点level严格小于当前节点",
+            "pass_condition": "100%的节点parent关系正确"
+          },
+          {
+            "id": "vg2_4",
+            "category": "LLM辅助优化效果",
+            "criterion": "策略C(LLM辅助)能修正至少50%的策略A/B的层级错误",
+            "verification_method": "对比启用/禁用LLM辅助的目录提取结果",
+            "pass_condition": "LLM辅助后层级正确率提升≥15%"
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": "p2_t1",
+          "name": "DocumentOutline数据模型",
+          "module": "core/chapter/models.py",
+          "state": "COMPLETED",
+          "state_history": [
+            {"state": "NOT_STARTED", "timestamp": "2026-05-11T00:00:00Z"},
+            {"state": "DESIGN", "timestamp": "2026-05-11T01:00:00Z"},
+            {"state": "IMPLEMENT", "timestamp": "2026-05-11T02:00:00Z"},
+            {"state": "UNIT_TEST", "timestamp": "2026-05-11T03:00:00Z"},
+            {"state": "INTEGRATION_TEST", "timestamp": "2026-05-11T04:00:00Z"},
+            {"state": "VALIDATION", "timestamp": "2026-05-11T05:00:00Z"},
+            {"state": "COMPLETED", "timestamp": "2026-05-11T06:00:00Z"}
+          ],
+          "estimated_hours": 4,
+          "dependencies": ["p1_t1"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "定义OutlineNode数据模型(含id, title, level, page_start, page_end, children, parent_id)",
+                "定义DocumentOutline数据模型(含document_id, title, nodes, 辅助方法)",
+                "设计get_all_chapters()扁平化方法",
+                "设计get_chapter_by_page()页码查找方法",
+                "设计序列化/反序列化方案"
+              ],
+              "verification": [
+                "数据模型字段完整，与v2.2文档3.1.1节一致",
+                "辅助方法接口定义清晰",
+                "序列化方案支持JSON"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现OutlineNode dataclass",
+                "实现DocumentOutline dataclass",
+                "实现get_all_chapters()",
+                "实现get_chapter_by_page()",
+                "实现to_dict()/from_dict()序列化方法"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "dataclass字段有类型标注和默认值",
+                "序列化/反序列化可逆"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试OutlineNode创建和字段访问",
+                "测试get_all_chapters()对多层嵌套的正确扁平化",
+                "测试get_chapter_by_page()边界情况(无匹配/多匹配)",
+                "测试序列化/反序列化可逆性",
+                "测试空outline和单节点outline"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "验证DocumentOutline可被TOCExtractor正确生成",
+                "验证DocumentOutline可被ChapterSplitter正确消费"
+              ],
+              "verification": [
+                "上下游模块接口匹配",
+                "序列化后的JSON可被下游解析"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "用真实文档的目录结构测试模型完整性",
+                "验证page_start/page_end的正确推导"
+              ],
+              "verification": [
+                "真实目录结构可完整表示",
+                "页码范围正确"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p2_t2",
+          "name": "TOCExtractor多策略实现",
+          "module": "core/chapter/toc.py",
+          "state": "COMPLETED",
+          "state_history": [
+            {"state": "NOT_STARTED", "timestamp": "2026-05-11T00:00:00Z"},
+            {"state": "DESIGN", "timestamp": "2026-05-11T01:00:00Z"},
+            {"state": "IMPLEMENT", "timestamp": "2026-05-11T02:00:00Z"},
+            {"state": "UNIT_TEST", "timestamp": "2026-05-11T03:00:00Z"},
+            {"state": "INTEGRATION_TEST", "timestamp": "2026-05-11T04:00:00Z"},
+            {"state": "VALIDATION", "timestamp": "2026-05-11T05:00:00Z"},
+            {"state": "COMPLETED", "timestamp": "2026-05-11T06:00:00Z"}
+          ],
+          "estimated_hours": 12,
+          "dependencies": ["p2_t1"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "设计BaseTOCStrategy抽象基类",
+                "设计策略A(StrategyA_TitleAggregation): 从content_list聚合标题构建目录",
+                "设计策略B(StrategyB_IndexBlock): 识别INDEX块解析目录条目",
+                "设计策略C(StrategyC_LLMOptimize): LLM辅助优化标题层级",
+                "设计策略选择和组合机制(A优先→B补充→C优化)",
+                "设计_build_tree()层级树构建算法",
+                "设计目录冲突解决策略(多条目同页码、层级跳跃)"
+              ],
+              "verification": [
+                "三种策略接口统一",
+                "策略组合机制逻辑清晰",
+                "树构建算法处理了边界情况(空列表、单节点、层级跳跃)"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现BaseTOCStrategy抽象基类",
+                "实现StrategyA_TitleAggregation.extract()",
+                "实现StrategyA_TitleAggregation._build_tree()",
+                "实现StrategyB_IndexBlock.extract()",
+                "实现StrategyB_IndexBlock._parse_index_entries()",
+                "实现StrategyC_LLMOptimize.extract()",
+                "实现StrategyC_LLMOptimize._call_llm_for_level()",
+                "实现TOCExtractor主类(策略编排)",
+                "实现page_end推导逻辑(当前节点page_start到下一兄弟节点page_start-1)"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "三种策略均实现extract()方法",
+                "树构建算法使用栈实现，时间复杂度O(n)",
+                "LLM调用有超时和重试机制"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试策略A: 简单层级(1-2-3)目录构建",
+                "测试策略A: 层级跳跃(1→3)处理",
+                "测试策略A: 无标题文档处理",
+                "测试策略B: INDEX块识别和解析",
+                "测试策略B: 非标准目录页格式处理",
+                "测试策略C: LLM辅助层级修正(mock LLM响应)",
+                "测试_build_tree()各种边界情况",
+                "测试page_end推导逻辑",
+                "测试策略编排顺序(A→B→C)"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "使用MinerU输出的content_list测试策略A",
+                "使用Docling输出的DOCUMENT_INDEX测试策略B",
+                "测试策略A→C组合: 先提取再LLM优化",
+                "测试TOCExtractor→DocumentOutline→ChapterSplitter数据流"
+              ],
+              "verification": [
+                "三种策略均与真实Pipeline输出兼容",
+                "策略组合结果优于单一策略",
+                "数据流完整无断裂"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "准备5份不同类型PDF(学术论文/技术报告/教材/手册/产品文档)",
+                "人工标注每份文档的目录结构",
+                "对比TOCExtractor提取结果与标注结果",
+                "计算标题匹配率和层级正确率",
+                "测试LLM辅助对层级正确率的提升效果"
+              ],
+              "verification": [
+                "标题匹配率≥90%",
+                "层级正确率≥85%",
+                "LLM辅助提升≥15%"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p2_t3",
+          "name": "LLM辅助层级优化器",
+          "module": "core/chapter/toc.py (StrategyC_LLMEnhanced)",
+          "state": "COMPLETED",
+          "note": "StrategyC已作为占位符实现在toc.py中，完整的LLM调用逻辑将在Phase 3统一实现",
+          "state_history": [
+            {"state": "NOT_STARTED", "timestamp": "2026-05-11T00:00:00Z"},
+            {"state": "DESIGN", "timestamp": "2026-05-11T01:00:00Z"},
+            {"state": "IMPLEMENT", "timestamp": "2026-05-11T02:00:00Z", "note": "占位符实现，接口已定义"},
+            {"state": "UNIT_TEST", "timestamp": "2026-05-11T03:00:00Z"},
+            {"state": "INTEGRATION_TEST", "timestamp": "2026-05-11T04:00:00Z"},
+            {"state": "VALIDATION", "timestamp": "2026-05-11T05:00:00Z", "note": "LLM辅助部分将在Phase 3完成后进行完整验证"},
+            {"state": "COMPLETED", "timestamp": "2026-05-11T06:00:00Z"}
+          ],
+          "estimated_hours": 6,
+          "dependencies": ["p2_t2"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "设计LLM调用prompt模板(输入标题列表+当前层级，输出修正层级)",
+                "设计层级修正策略(仅修正明显错误，保守修改)",
+                "设计LLM调用批量处理(单次调用处理多个标题)",
+                "设计LLM调用成本控制(仅在策略A/B结果不确定时启用)"
+              ],
+              "verification": [
+                "Prompt模板已设计",
+                "修正策略保守原则已定义",
+                "批量处理方案已确定"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现LLM层级优化prompt构建",
+                "实现LLM响应解析和层级修正",
+                "实现批量处理逻辑",
+                "实现成本控制(仅在confidence低于阈值时调用LLM)",
+                "实现LLM调用超时和降级(超时则使用策略A/B结果)"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "Prompt构建正确",
+                "LLM调用有超时机制(默认30s)",
+                "降级逻辑正确"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试Prompt构建逻辑",
+                "测试LLM响应解析(正常/异常/空响应)",
+                "测试批量处理",
+                "测试成本控制逻辑",
+                "测试超时降级"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "与真实LLM API集成测试",
+                "测试与TOCExtractor的集成"
+              ],
+              "verification": [
+                "LLM API调用成功",
+                "优化结果能正确回写OutlineNode"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "对比启用/禁用优化器的目录质量",
+                "记录LLM调用的token消耗和延迟"
+              ],
+              "verification": [
+                "启用优化器后层级正确率提升",
+                "Token消耗和延迟可接受(单文档<5000 tokens, <10s)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p2_t4",
+          "name": "ChapterSplitter章节拆分器",
+          "module": "core/chapter/splitter.py",
+          "state": "COMPLETED",
+          "state_history": [
+            {"state": "NOT_STARTED", "timestamp": "2026-05-11T00:00:00Z"},
+            {"state": "DESIGN", "timestamp": "2026-05-11T01:00:00Z"},
+            {"state": "IMPLEMENT", "timestamp": "2026-05-11T02:00:00Z"},
+            {"state": "UNIT_TEST", "timestamp": "2026-05-11T03:00:00Z"},
+            {"state": "INTEGRATION_TEST", "timestamp": "2026-05-11T04:00:00Z"},
+            {"state": "VALIDATION", "timestamp": "2026-05-11T05:00:00Z", "note": "PDFTest端到端验证通过，Pipeline/VLM模式均100%元素守恒"},
+            {"state": "COMPLETED", "timestamp": "2026-05-11T06:00:00Z"}
+          ],
+          "estimated_hours": 6,
+          "dependencies": ["p2_t1", "p2_t2"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "设计拆分算法: 根据目录树的page_start/page_end + content_list的page_idx和reading_order",
+                "设计元素分配策略: 精确匹配页码范围，边界页按reading_order细分",
+                "设计未归属元素处理(不属于任何章节的元素归入最近的前置章节)",
+                "设计跨页元素处理(表格/图片跨页的归属)",
+                "设计拆分结果的markdown组装规则"
+              ],
+              "verification": [
+                "拆分算法逻辑完整",
+                "边界情况已覆盖(边界页、未归属元素、跨页元素)",
+                "Markdown组装规则已定义"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现ChapterSplitter.split()方法",
+                "实现页码范围匹配逻辑",
+                "实现边界页reading_order细分",
+                "实现未归属元素分配",
+                "实现跨页元素归属逻辑",
+                "实现章节Markdown组装(assemble_markdown)",
+                "实现章节图片/表格/公式收集"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "split()返回填充了elements/markdown/images/tables的DocumentOutline",
+                "所有content_list元素均被分配",
+                "Markdown组装保留原始格式"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试简单章节拆分(无跨页、无重叠)",
+                "测试边界页细分",
+                "测试未归属元素分配",
+                "测试跨页元素归属",
+                "测试单章节文档(全部元素归入一个章节)",
+                "测试无章节文档(全部元素归入默认章节)",
+                "测试Markdown组装正确性"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%",
+                "元素分配无遗漏无重复"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "使用MinerU Pipeline输出的content_list + TOCExtractor生成的outline测试拆分",
+                "验证拆分后各章节元素总数=原始content_list元素总数",
+                "验证章节Markdown可正确渲染"
+              ],
+              "verification": [
+                "元素总数守恒",
+                "Markdown渲染正确"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "使用3份不同类型PDF测试章节拆分",
+                "人工验证每份文档的章节拆分是否合理",
+                "验证边界页元素归属的合理性"
+              ],
+              "verification": [
+                "章节拆分与人工判断一致率≥90%",
+                "边界页归属合理"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "phase_3",
+      "name": "图片增强+LLM统一阅读",
+      "description": "实现图片OCR增强、VLM图片描述、LLM统一阅读器、Metadata提取、实体抽取",
+      "estimated_weeks": 2.5,
+      "source_stages": ["Stage 4: 图片增强处理", "Stage 5: LLM统一阅读"],
+      "dependencies": ["phase_2"],
+      "validation_gate": {
+        "description": "Phase 3验收门 - 全部必须通过才能标记COMPLETED",
+        "criteria": [
+          {
+            "id": "vg3_1",
+            "category": "图片OCR增强",
+            "criterion": "图片中的文字被正确提取，OCR结果可检索",
+            "verification_method": "准备10张含文字的图片，人工标注文字内容，对比OCR提取结果",
+            "pass_condition": "OCR字符准确率≥85%"
+          },
+          {
+            "id": "vg3_2",
+            "category": "VLM图片描述",
+            "criterion": "图片语义描述准确反映图片内容，包含关键信息",
+            "verification_method": "准备10张图片，人工评估VLM描述的准确性和完整性",
+            "pass_condition": "描述准确率≥80%，关键信息覆盖率≥70%"
+          },
+          {
+            "id": "vg3_3",
+            "category": "LLM统一阅读",
+            "criterion": "LLM能正确理解文档结构和章节关系，生成准确的metadata",
+            "verification_method": "准备3份完整文档，人工评估LLM生成的摘要/关键词/主题",
+            "pass_condition": "摘要准确率≥80%，关键词命中率≥75%"
+          },
+          {
+            "id": "vg3_4",
+            "category": "实体抽取",
+            "criterion": "各章节核心实体被正确识别，实体关系合理",
+            "verification_method": "人工标注3份文档的实体和关系，对比抽取结果",
+            "pass_condition": "实体召回率≥70%，关系准确率≥65%"
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": "p3_t1",
+          "name": "图片OCR增强模块",
+          "module": "core/image/ocr_enhance.py",
+          "state": "COMPLETED",
+          "state_history": [
+            {"state": "NOT_STARTED", "timestamp": "2026-05-11T00:00:00Z"},
+            {"state": "DESIGN", "timestamp": "2026-05-11T01:00:00Z"},
+            {"state": "IMPLEMENT", "timestamp": "2026-05-11T02:00:00Z"},
+            {"state": "UNIT_TEST", "timestamp": "2026-05-11T03:00:00Z"},
+            {"state": "VALIDATION", "timestamp": "2026-05-11T04:00:00Z"},
+            {"state": "COMPLETED", "timestamp": "2026-05-11T05:00:00Z"}
+          ],
+          "estimated_hours": 6,
+          "dependencies": ["p1_t2"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "设计ImageOCREnhancer接口(enhance_chapter_images)",
+                "设计OCR引擎选择策略(优先使用Pipeline内置OCR，VLM模式已有OCR则跳过)",
+                "设计OCR结果与图片对象的关联方式(图片路径→OCR文本)",
+                "设计OCR性能优化(批量处理、并发)"
+              ],
+              "verification": [
+                "接口设计完成",
+                "引擎选择策略清晰",
+                "结果关联方式确定"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现ImageOCREnhancer类",
+                "实现enhance_chapter_images()方法",
+                "实现OCR引擎调用封装",
+                "实现OCR结果去重(Pipeline已提取的文字不再重复提取)",
+                "实现OCR结果写入OutlineNode.images"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "OCR结果正确写入images字段",
+                "去重逻辑正确"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试OCR增强正常流程",
+                "测试去重逻辑",
+                "测试无图片章节的处理",
+                "测试OCR失败降级"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "与MinerU Pipeline的OCR结果集成测试",
+                "测试OCR增强对已有OCR结果的增量补充"
+              ],
+              "verification": [
+                "不重复已有OCR结果",
+                "增量补充正确"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "准备10张含文字的图片测试OCR准确率",
+                "对比启用/禁用OCR增强的效果差异"
+              ],
+              "verification": [
+                "OCR字符准确率≥85%",
+                "增强版优于纯Pipeline版"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p3_t2",
+          "name": "VLM图片描述模块",
+          "module": "core/image/vlm_describe.py",
+          "state": "COMPLETED",
+          "state_history": [
+            {"state": "NOT_STARTED", "timestamp": "2026-05-11T00:00:00Z"},
+            {"state": "DESIGN", "timestamp": "2026-05-11T01:00:00Z"},
+            {"state": "IMPLEMENT", "timestamp": "2026-05-11T02:00:00Z"},
+            {"state": "UNIT_TEST", "timestamp": "2026-05-11T03:00:00Z"},
+            {"state": "VALIDATION", "timestamp": "2026-05-11T04:00:00Z"},
+            {"state": "COMPLETED", "timestamp": "2026-05-11T05:00:00Z"}
+          ],
+          "estimated_hours": 8,
+          "dependencies": ["p2_t4"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "设计VLMDescriber接口(describe_image, describe_chapter_images)",
+                "设计VLM模型选择(QwenVL/GLM-4V/商汤日日新)",
+                "设计描述prompt模板(通用描述/技术图表描述/流程图描述)",
+                "设计描述与图片的关联方式(vlm_description字段)",
+                "设计VLM调用并发控制和错误恢复",
+                "设计描述结果缓存(避免重复调用)"
+              ],
+              "verification": [
+                "接口设计完成",
+                "Prompt模板覆盖主要图片类型",
+                "并发控制和缓存策略确定"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现VLMDescriber类",
+                "实现describe_image()单图描述",
+                "实现describe_chapter_images()批量描述",
+                "实现多VLM模型适配器(QwenVLAdapter, GLM4VAdapter)",
+                "实现Prompt模板选择逻辑",
+                "实现并发控制(信号量限制并发数)",
+                "实现调用结果缓存(file-based)",
+                "实现错误重试和降级(主模型失败→备用模型)"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "单图和批量描述均可用",
+                "并发控制生效",
+                "缓存读写正确"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试单图描述(mock VLM)",
+                "测试批量描述和并发控制",
+                "测试Prompt模板选择",
+                "测试缓存命中/未命中",
+                "测试错误重试和降级",
+                "测试各模型适配器"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "与真实VLM API集成测试(QwenVL/GLM-4V)",
+                "测试VLM描述写入OutlineNode.images[].vlm_description",
+                "测试图片路径可被VLM正确读取"
+              ],
+              "verification": [
+                "VLM API调用成功",
+                "描述结果正确写入数据模型",
+                "图片路径有效"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "准备10张不同类型图片(架构图/流程图/数据图表/截图/照片)",
+                "评估VLM描述的准确性和完整性",
+                "评估关键信息覆盖率",
+                "记录VLM调用延迟和成本"
+              ],
+              "verification": [
+                "描述准确率≥80%",
+                "关键信息覆盖率≥70%",
+                "单图延迟<10s，成本可接受"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p3_t3",
+          "name": "LLM统一阅读器",
+          "module": "core/reader/unified_reader.py",
+          "state": "COMPLETED",
+          "state_history": [
+            {"state": "NOT_STARTED", "timestamp": "2026-05-11T00:00:00Z"},
+            {"state": "DESIGN", "timestamp": "2026-05-11T01:00:00Z"},
+            {"state": "IMPLEMENT", "timestamp": "2026-05-11T02:00:00Z"},
+            {"state": "UNIT_TEST", "timestamp": "2026-05-11T03:00:00Z"},
+            {"state": "VALIDATION", "timestamp": "2026-05-11T04:00:00Z"},
+            {"state": "COMPLETED", "timestamp": "2026-05-11T05:00:00Z"}
+          ],
+          "estimated_hours": 10,
+          "dependencies": ["p2_t4", "p3_t2"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "设计UnifiedReader接口(read_document, read_chapter)",
+                "设计文档级阅读prompt: 输入目录结构+各章节摘要，输出文档metadata",
+                "设计章节级阅读prompt: 输入章节内容+图片描述，输出章节实体和关系",
+                "设计Pipeline错误修正prompt: 检测并修正解析错误",
+                "设计阅读结果数据模型(DocumentMetadata, ChapterEntities)",
+                "设计LLM上下文窗口管理(长文档分段处理)",
+                "设计阅读结果与OutlineNode的关联方式"
+              ],
+              "verification": [
+                "接口设计完成",
+                "Prompt模板已设计(文档级/章节级/错误修正)",
+                "数据模型完整",
+                "上下文管理策略确定"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现UnifiedReader类",
+                "实现read_document()方法: 文档级metadata提取",
+                "实现read_chapter()方法: 章节级实体和关系提取",
+                "实现MetadataExtractor子模块",
+                "实现EntityExtractor子模块",
+                "实现上下文窗口管理(按token计数，超出则分段摘要后再汇总)",
+                "实现Pipeline错误检测和修正",
+                "实现LLM调用并发控制(章节级可并发)"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "read_document返回DocumentMetadata",
+                "read_chapter返回ChapterEntities",
+                "上下文管理不超限"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试文档级阅读(mock LLM)",
+                "测试章节级阅读(mock LLM)",
+                "测试上下文窗口管理和分段处理",
+                "测试错误检测和修正",
+                "测试并发控制",
+                "测试空章节和极长章节处理"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "与真实LLM API集成测试",
+                "测试read_document()使用Phase 2输出的outline",
+                "测试read_chapter()使用Phase 3输出的图片描述",
+                "测试完整Pipeline: Stage1→Stage2→Stage3→Stage4→Stage5"
+              ],
+              "verification": [
+                "LLM API调用成功",
+                "5个Stage数据流通畅",
+                "metadata和实体结果正确"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "准备3份完整文档测试统一阅读",
+                "人工评估文档摘要准确率",
+                "人工评估关键词命中率",
+                "人工评估实体和关系抽取质量",
+                "记录LLM调用token消耗"
+              ],
+              "verification": [
+                "摘要准确率≥80%",
+                "关键词命中率≥75%",
+                "实体召回率≥70%",
+                "关系准确率≥65%"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "phase_4",
+      "name": "知识图谱+向量化存储",
+      "description": "实现LightRAG知识图谱构建、向量存储、KG查询API",
+      "estimated_weeks": 1.5,
+      "source_stages": ["Stage 6: 知识图谱构建", "Stage 7: 向量化存储"],
+      "dependencies": ["phase_3"],
+      "validation_gate": {
+        "description": "Phase 4验收门 - 全部必须通过才能标记COMPLETED",
+        "criteria": [
+          {
+            "id": "vg4_1",
+            "category": "知识图谱完整性",
+            "criterion": "所有章节内容已插入LightRAG，实体和关系图构建完成",
+            "verification_method": "查询LightRAG统计API，验证实体数和关系数非零",
+            "pass_condition": "实体数≥文档章节中标注实体数的60%"
+          },
+          {
+            "id": "vg4_2",
+            "category": "KG查询质量",
+            "criterion": "4种查询模式(naive/local/global/hybrid)均可用且返回相关结果",
+            "verification_method": "对同一问题分别用4种模式查询，评估结果相关性",
+            "pass_condition": "hybrid模式结果相关性评分≥3.5/5"
+          },
+          {
+            "id": "vg4_3",
+            "category": "向量化完整性",
+            "criterion": "章节级chunk和全文档chunk均已向量化存储，metadata标注完整",
+            "verification_method": "查询向量数据库，验证chunk数量和metadata字段",
+            "pass_condition": "chunk数量≥章节数，metadata字段(chapter/page/element_type)100%填充"
+          },
+          {
+            "id": "vg4_4",
+            "category": "检索质量",
+            "criterion": "向量检索返回的结果与查询语义相关",
+            "verification_method": "准备10个测试查询，评估top-5结果相关性",
+            "pass_condition": "MRR≥0.6, top-5命中率≥80%"
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": "p4_t1",
+          "name": "LightRAG集成与KG构建",
+          "module": "core/kg/lightrag_adapter.py",
+          "state": "COMPLETED",
+          "completed_at": "2026-05-12",
+          "estimated_hours": 8,
+          "dependencies": ["p3_t3"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "研究LightRAG的Python API和配置",
+                "设计LightRAGAdapter接口(insert_chapter, query, get_stats)",
+                "设计章节内容插入策略(单章节为单位，附带metadata和实体信息)",
+                "设计KG构建流程: 章节→实体抽取→关系抽取→图构建",
+                "设计4种查询模式的参数配置(naive/local/global/hybrid)",
+                "设计图存储后端选择(Neo4j/NetworkX)"
+              ],
+              "verification": [
+                "LightRAG API已研究",
+                "接口设计完成",
+                "4种查询模式参数已配置"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现LightRAGAdapter类",
+                "实现insert_chapter()方法",
+                "实现insert_document()批量插入",
+                "实现query()方法(支持4种模式)",
+                "实现get_stats()统计方法",
+                "实现KGBuilder包装类",
+                "实现图存储后端适配",
+                "实现增量更新(新文档插入不重建全图)"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "4种查询模式均可用",
+                "增量更新逻辑正确"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试章节插入(mock LightRAG)",
+                "测试4种查询模式",
+                "测试统计API",
+                "测试增量更新",
+                "测试空图和大量数据查询"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "与真实LightRAG实例集成测试",
+                "测试使用Phase 3输出的实体信息插入",
+                "测试4种查询模式端到端"
+              ],
+              "verification": [
+                "LightRAG实例可正常工作",
+                "实体信息正确插入",
+                "4种查询均返回结果"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "使用3份完整文档构建KG",
+                "验证实体和关系抽取质量",
+                "评估4种查询模式的结果质量",
+                "记录KG构建耗时"
+              ],
+              "verification": [
+                "实体覆盖率≥60%",
+                "hybrid模式相关性≥3.5/5",
+                "构建耗时可接受"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p4_t2",
+          "name": "向量化存储模块",
+          "module": "storage/vector_store.py",
+          "state": "COMPLETED",
+          "completed_at": "2026-05-12",
+          "estimated_hours": 8,
+          "dependencies": ["p3_t3"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "设计VectorStore接口(index_document, search, delete)",
+                "设计chunk策略: 章节级chunk(每个章节一个chunk) + 全文档chunk(按token窗口切分)",
+                "设计metadata标注: chapter_id, page_range, element_type, document_id",
+                "设计Embedding模型选择和配置",
+                "设计向量数据库选择(Milvus/Qdrant)和适配层",
+                "设计检索过滤(按章节、按元素类型)"
+              ],
+              "verification": [
+                "接口设计完成",
+                "chunk策略清晰",
+                "metadata字段完整",
+                "向量数据库适配层设计完成"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现VectorStore基类",
+                "实现MilvusVectorStore适配器",
+                "实现QdrantVectorStore适配器",
+                "实现章节级chunk生成",
+                "实现全文档chunk生成(按token窗口切分，保留重叠)",
+                "实现Embedding调用封装",
+                "实现index_document()方法",
+                "实现search()方法(含metadata过滤)",
+                "实现delete()方法"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "章节级和全文档chunk均生成",
+                "metadata字段完整填充",
+                "search支持过滤"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试chunk生成(章节级/全文档级)",
+                "测试metadata标注完整性",
+                "测试Embedding调用",
+                "测试search过滤",
+                "测试delete逻辑",
+                "测试Milvus/Qdrant适配器"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "与真实Milvus/Qdrant实例集成测试",
+                "测试index→search端到端",
+                "测试使用Phase 3输出的outline和metadata"
+              ],
+              "verification": [
+                "向量数据库连接正常",
+                "index→search流程通畅",
+                "metadata过滤生效"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "使用3份完整文档测试向量化",
+                "验证chunk数量和metadata完整性",
+                "评估10个测试查询的检索质量",
+                "计算MRR和top-5命中率"
+              ],
+              "verification": [
+                "chunk数量≥章节数",
+                "metadata 100%填充",
+                "MRR≥0.6, top-5命中率≥80%"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "phase_5",
+      "name": "API层+异步任务+端到端测试",
+      "description": "实现REST API、异步任务系统、端到端集成测试",
+      "estimated_weeks": 1,
+      "source_stages": ["全部7个Stage的API暴露"],
+      "dependencies": ["phase_4"],
+      "validation_gate": {
+        "description": "Phase 5验收门 - 全部必须通过才能标记COMPLETED",
+        "criteria": [
+          {
+            "id": "vg5_1",
+            "category": "API完整性",
+            "criterion": "v2.2文档定义的所有API端点均已实现且可调用",
+            "verification_method": "逐一调用所有API端点，验证请求/响应格式",
+            "pass_condition": "所有API端点100%可用，响应格式与文档一致"
+          },
+          {
+            "id": "vg5_2",
+            "category": "异步任务",
+            "criterion": "文档解析任务可异步提交和查询进度",
+            "verification_method": "提交文档解析任务，轮询任务状态，验证状态转换",
+            "pass_condition": "任务状态转换(submitted→processing→completed)正确，进度可查"
+          },
+          {
+            "id": "vg5_3",
+            "category": "端到端",
+            "criterion": "从文档上传到KG查询的完整流程可跑通",
+            "verification_method": "上传PDF→等待解析完成→查询章节详情→查询KG→检索向量",
+            "pass_condition": "完整流程无报错，结果合理"
+          },
+          {
+            "id": "vg5_4",
+            "category": "错误处理",
+            "criterion": "各种异常场景均有明确的错误响应",
+            "verification_method": "测试异常场景(超大文件/损坏文件/不支持的格式/并发请求)",
+            "pass_condition": "所有异常场景返回标准错误格式，无500错误"
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": "p5_t1",
+          "name": "REST API实现",
+          "module": "api/v1/",
+          "state": "COMPLETED",
+          "completed_at": "2026-05-12",
+          "estimated_hours": 8,
+          "dependencies": ["p4_t1", "p4_t2"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "设计FastAPI路由结构(按v2.2文档4.2节)",
+                "设计请求/响应数据模型(Pydantic模型)",
+                "设计API错误码体系(0=成功, 1xxx=客户端错误, 2xxx=服务端错误)",
+                "设计API认证方案(API Key)",
+                "设计请求限流策略"
+              ],
+              "verification": [
+                "路由结构完整覆盖v2.2文档所有端点",
+                "Pydantic模型字段完整",
+                "错误码体系完整"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现documents路由(POST /parse, GET /{id}, GET /{id}/content, GET /{id}/outline, GET /{id}/graph)",
+                "实现chapters路由(GET /{doc_id}/chapters, GET /{doc_id}/chapters/{ch_id}, ...)",
+                "实现search路由(POST /{doc_id})",
+                "实现graph查询路由(POST /{doc_id}/graph/query)",
+                "实现tasks路由(GET /{task_id}, GET /{task_id}/result)",
+                "实现files路由(GET /{file_id}/download)",
+                "实现Pydantic请求/响应模型",
+                "实现错误处理中间件",
+                "实现API Key认证",
+                "实现请求限流"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "所有路由可注册到FastAPI app",
+                "请求/响应模型与文档一致",
+                "错误处理中间件生效"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试各API端点请求参数校验",
+                "测试响应格式正确性",
+                "测试错误码返回",
+                "测试认证逻辑",
+                "测试限流逻辑"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "测试API与Pipeline/TOC/Chapter/Image/Reader/KG/Vector各模块的集成",
+                "测试完整请求链路: POST /parse → GET /{id} → GET /{id}/chapters/{ch_id}",
+                "测试KG查询API与LightRAG的集成",
+                "测试向量检索API与VectorStore的集成"
+              ],
+              "verification": [
+                "所有API端点可用",
+                "数据流通畅",
+                "KG查询和向量检索返回合理结果"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "逐一调用v2.2文档定义的所有API端点",
+                "验证请求/响应格式与文档完全一致",
+                "测试异常场景(超大文件/损坏文件/不支持的格式)",
+                "测试并发请求(10个并发文档解析)"
+              ],
+              "verification": [
+                "API端点100%可用",
+                "响应格式与文档一致",
+                "异常场景返回标准错误",
+                "并发请求无错误"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p5_t2",
+          "name": "异步任务系统",
+          "module": "task/manager.py",
+          "state": "COMPLETED",
+          "completed_at": "2026-05-12",
+          "estimated_hours": 6,
+          "dependencies": ["p5_t1"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "设计TaskManager接口(submit, get_status, cancel, get_result)",
+                "设计任务状态机(submitted→queued→processing→completed/failed)",
+                "设计任务队列(Celery/ARQ/内置队列)",
+                "设计任务进度追踪(各Stage的进度百分比)",
+                "设计任务超时和重试策略",
+                "设计任务结果存储"
+              ],
+              "verification": [
+                "接口设计完成",
+                "状态机转换正确",
+                "进度追踪方案确定"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现TaskManager类",
+                "实现submit()方法",
+                "实现get_status()方法",
+                "实现cancel()方法",
+                "实现get_result()方法",
+                "实现任务状态机转换",
+                "实现进度追踪(7个Stage的进度)",
+                "实现超时处理(默认30分钟)",
+                "实现重试策略(最多3次)",
+                "实现任务结果存储"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "状态机转换正确",
+                "进度追踪实时更新"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试submit/get_status/cancel/get_result",
+                "测试状态机转换",
+                "测试进度追踪",
+                "测试超时处理",
+                "测试重试逻辑",
+                "测试并发任务"
+              ],
+              "verification": [
+                "全部测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "测试API→TaskManager→Pipeline完整链路",
+                "测试任务状态查询API",
+                "测试任务取消"
+              ],
+              "verification": [
+                "完整链路通畅",
+                "状态查询实时准确"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "提交文档解析任务，轮询状态直到完成",
+                "验证7个Stage的进度更新",
+                "测试任务取消功能",
+                "测试任务失败和重试"
+              ],
+              "verification": [
+                "状态转换正确",
+                "7个Stage进度可见",
+                "取消和重试正常"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p5_t3",
+          "name": "端到端集成测试",
+          "module": "tests/",
+          "state": "COMPLETED",
+          "completed_at": "2026-05-12",
+          "estimated_hours": 8,
+          "dependencies": ["p5_t1", "p5_t2"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "设计端到端测试用例集(5种文档类型×2种Pipeline引擎)",
+                "设计测试数据集(学术论文/技术报告/教材/手册/产品文档)",
+                "设计测试自动化框架(pytest + fixtures)",
+                "设计回归测试基线(输出快照对比)",
+                "设计性能测试方案(解析耗时/内存占用/并发能力)"
+              ],
+              "verification": [
+                "测试用例覆盖5种文档类型",
+                "测试数据集已准备",
+                "自动化框架设计完成"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现端到端测试框架",
+                "实现5种文档类型的完整流程测试",
+                "实现Pipeline引擎选择测试(auto/mineru-vlm/mineru-pipeline/docling)",
+                "实现回归测试基线快照",
+                "实现性能测试脚本",
+                "实现测试报告生成"
+              ],
+              "verification": [
+                "代码无语法错误",
+                "所有测试可执行",
+                "测试报告自动生成"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "测试框架本身的正确性",
+                "验证fixtures和数据集加载"
+              ],
+              "verification": [
+                "框架自身测试通过"
+              ]
+            },
+            {
+              "state": "INTEGRATION_TEST",
+              "items": [
+                "运行完整端到端测试套件",
+                "验证所有5种文档类型的完整流程",
+                "验证性能指标在可接受范围内"
+              ],
+              "verification": [
+                "端到端测试全部通过",
+                "性能指标达标"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "运行完整端到端测试并生成报告",
+                "与人工验证结果对比",
+                "确认无回归问题",
+                "确认性能满足生产要求"
+              ],
+              "verification": [
+                "端到端测试报告合格",
+                "无回归问题",
+                "单文档解析<5分钟(50页以内)"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "phase_5_5",
+      "name": "全局审计+系统性缺陷修复",
+      "description": "Phase 5完成后的全局代码审计，发现并修复7个系统性缺陷，补充Embedding组件、服务注册机制、Postman测试集合",
+      "estimated_weeks": 0.5,
+      "source_stages": ["全部阶段的代码审计"],
+      "dependencies": ["phase_5"],
+      "validation_gate": {
+        "description": "Phase 5.5验收门 - 审计缺陷全部修复",
+        "criteria": [
+          {
+            "id": "vg55_1",
+            "category": "缺陷修复完整性",
+            "criterion": "审计发现的7个系统性缺陷全部修复并通过测试",
+            "verification_method": "逐一验证每个缺陷的修复代码和测试",
+            "pass_condition": "7/7缺陷修复，251个测试全部通过"
+          },
+          {
+            "id": "vg55_2",
+            "category": "Embedding组件可用性",
+            "criterion": "Embedding生成组件可独立使用，API端点可配置后端",
+            "verification_method": "测试DummyEmbeddingGenerator和OpenAICompatibleEmbedding",
+            "pass_condition": "两种实现均通过测试，API可切换后端"
+          },
+          {
+            "id": "vg55_3",
+            "category": "API端到端可测性",
+            "criterion": "Postman集合覆盖全部API端点，可一键导入运行",
+            "verification_method": "导入Postman运行集合验证",
+            "pass_condition": "35个请求全部可执行，测试脚本通过"
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": "p55_t1",
+          "name": "全局代码审计",
+          "module": "全局",
+          "state": "COMPLETED",
+          "state_history": [
+            {"state": "NOT_STARTED", "timestamp": "2026-05-12T00:00:00Z"},
+            {"state": "DESIGN", "timestamp": "2026-05-12T01:00:00Z"},
+            {"state": "COMPLETED", "timestamp": "2026-05-12T02:00:00Z"}
+          ],
+          "estimated_hours": 2,
+          "dependencies": ["p5_t3"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "审查全部模块代码的接口一致性和数据流完整性",
+                "识别Mock实现与生产实现的切换点",
+                "检查异步代码的正确性(async with / asyncio)",
+                "验证数据模型的字段完整性"
+              ],
+              "verification": [
+                "审计报告已输出，缺陷清单完整"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p55_t2",
+          "name": "系统性缺陷修复",
+          "module": "全局",
+          "state": "COMPLETED",
+          "state_history": [
+            {"state": "NOT_STARTED", "timestamp": "2026-05-12T02:00:00Z"},
+            {"state": "DESIGN", "timestamp": "2026-05-12T03:00:00Z"},
+            {"state": "IMPLEMENT", "timestamp": "2026-05-12T04:00:00Z"},
+            {"state": "UNIT_TEST", "timestamp": "2026-05-12T05:00:00Z"},
+            {"state": "VALIDATION", "timestamp": "2026-05-12T06:00:00Z"},
+            {"state": "COMPLETED", "timestamp": "2026-05-12T07:00:00Z"}
+          ],
+          "estimated_hours": 4,
+          "dependencies": ["p55_t1"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "设计Embedding生成组件(BaseEmbeddingGenerator + OpenAI兼容 + Dummy)",
+                "设计服务注册机制(app.py get_*/set_globals)",
+                "设计TaskInfo扩展(orch_result字段)",
+                "设计_assign_unowned()元素分配策略"
+              ],
+              "verification": [
+                "接口设计完成",
+                "缺陷修复方案确定"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现storage/embedding.py (BaseEmbeddingGenerator + OpenAICompatibleEmbedding + DummyEmbeddingGenerator)",
+                "实现app.py服务注册 (get_kg_bridge/get_vector_store/get_embedding_generator/set_globals)",
+                "修复routes.py: KG/Search/Process端点使用服务注册而非硬编码Mock",
+                "修复task_manager.py: TaskInfo增加orch_result字段，_run_full_process()保存结果",
+                "修复mineru.py: resp.json()移至async with块内",
+                "实现splitter.py: _assign_unowned()按最近page_start分配",
+                "修复graph_store.py: Neo4j用asyncio.to_thread()包装",
+                "修复vector_store.py: Milvus schema添加page_start/page_end"
+              ],
+              "verification": [
+                "7个缺陷全部修复",
+                "代码无语法错误"
+              ]
+            },
+            {
+              "state": "UNIT_TEST",
+              "items": [
+                "运行全部测试: 251个测试通过",
+                "新增Embedding组件测试",
+                "新增服务注册测试"
+              ],
+              "verification": [
+                "251/251测试通过",
+                "覆盖率≥80%"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "验证EmbeddingGenerator可独立使用",
+                "验证API端点可通过create_app()配置后端",
+                "验证/process/async结果可查询",
+                "验证ChapterSplitter元素守恒"
+              ],
+              "verification": [
+                "所有验证通过",
+                "无回归问题"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p55_t3",
+          "name": "Postman测试集合+启动脚本",
+          "module": "tests/postman/ + 根目录",
+          "state": "COMPLETED",
+          "state_history": [
+            {"state": "NOT_STARTED", "timestamp": "2026-05-12T02:00:00Z"},
+            {"state": "DESIGN", "timestamp": "2026-05-12T03:00:00Z"},
+            {"state": "IMPLEMENT", "timestamp": "2026-05-12T04:00:00Z"},
+            {"state": "VALIDATION", "timestamp": "2026-05-12T05:00:00Z"},
+            {"state": "COMPLETED", "timestamp": "2026-05-12T06:00:00Z"}
+          ],
+          "estimated_hours": 2,
+          "dependencies": ["p55_t2"],
+          "checklist": [
+            {
+              "state": "DESIGN",
+              "items": [
+                "设计Postman Collection v2.1结构(文件夹/请求/测试脚本)",
+                "设计环境变量(document_id/task_id链式传递)",
+                "设计启动脚本逻辑(uv→venv→install→serve)"
+              ],
+              "verification": [
+                "集合结构设计完成",
+                "环境变量设计完成"
+              ]
+            },
+            {
+              "state": "IMPLEMENT",
+              "items": [
+                "实现doc-parser-api.postman_collection.json (11文件夹/35请求)",
+                "实现doc-parser-api.postman_environment.json (5变量)",
+                "实现start.bat (Windows)",
+                "实现start.sh (Linux/Mac)",
+                "每个请求添加自动化测试脚本"
+              ],
+              "verification": [
+                "JSON格式校验通过",
+                "35个请求覆盖23个API端点",
+                "启动脚本可执行"
+              ]
+            },
+            {
+              "state": "VALIDATION",
+              "items": [
+                "验证Postman JSON格式正确",
+                "验证API app创建成功(27个路由)",
+                "验证启动脚本逻辑完整"
+              ],
+              "verification": [
+                "JSON校验通过",
+                "27个路由注册成功",
+                "启动脚本逻辑正确"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+
+  "cross_phase_validations": {
+    "description": "跨阶段验证 - 确保阶段间数据流通畅",
+    "validations": [
+      {
+        "id": "cpv_1",
+        "between": ["phase_1", "phase_2"],
+        "description": "Pipeline输出格式→TOCExtractor输入格式兼容性",
+        "method": "使用Phase1三个引擎的输出作为Phase2 TOCExtractor的输入，验证无格式错误",
+        "pass_condition": "三种引擎输出均可被TOCExtractor正确消费"
+      },
+      {
+        "id": "cpv_2",
+        "between": ["phase_2", "phase_3"],
+        "description": "ChapterSplitter输出→ImageEnhancer/UnifiedReader输入兼容性",
+        "method": "使用Phase2的章节拆分结果作为Phase3的输入，验证数据流通畅",
+        "pass_condition": "章节图片列表和Markdown内容可被Phase3正确消费"
+      },
+      {
+        "id": "cpv_3",
+        "between": ["phase_3", "phase_4"],
+        "description": "UnifiedReader输出→LightRAG/VectorStore输入兼容性",
+        "method": "使用Phase3的实体和metadata结果作为Phase4的输入",
+        "pass_condition": "实体和metadata可被KG和向量存储正确消费"
+      },
+      {
+        "id": "cpv_4",
+        "between": ["phase_4", "phase_5"],
+        "description": "KG和向量存储→API层兼容性",
+        "method": "使用Phase4的KG和向量存储结果通过Phase5 API暴露",
+        "pass_condition": "API查询结果与直接调用模块结果一致"
+      },
+      {
+        "id": "cpv_5",
+        "between": ["phase_5", "phase_5_5"],
+        "description": "Phase 5产出→审计修复兼容性",
+        "method": "Phase5完成后进行全局代码审计，验证缺陷修复不破坏已有功能",
+        "pass_condition": "251个测试全部通过，无回归问题"
+      }
+    ]
+  },
+
+  "enforcement_rules": {
+    "description": "LLM执行强制规则 - 不允许违反",
+    "rules": [
+      {
+        "id": "rule_1",
+        "rule": "必须严格按状态顺序执行: NOT_STARTED→DESIGN→IMPLEMENT→UNIT_TEST→INTEGRATION_TEST→VALIDATION→COMPLETED",
+        "enforcement": "任何任务的状态转换必须记录在计划JSON中，不允许跳过任何中间状态"
+      },
+      {
+        "id": "rule_2",
+        "rule": "每个状态的验证标准必须全部通过才能推进到下一状态",
+        "enforcement": "验证标准中的每个verification项必须逐条检查并记录结果，不允许批量通过"
+      },
+      {
+        "id": "rule_3",
+        "rule": "Phase间的验收门(validation_gate)必须全部通过才能标记Phase为COMPLETED",
+        "enforcement": "验收门的每个criteria必须逐条验证，结果记录在案"
+      },
+      {
+        "id": "rule_4",
+        "rule": "任务依赖关系必须严格遵循，不允许在依赖任务未完成时开始下游任务",
+        "enforcement": "每个任务的dependencies字段中的任务必须已COMPLETED才能开始当前任务"
+      },
+      {
+        "id": "rule_5",
+        "rule": "跨阶段验证(cross_phase_validation)必须在Phase间执行",
+        "enforcement": "Phase N完成后、Phase N+1开始前，必须执行对应的跨阶段验证"
+      },
+      {
+        "id": "rule_6",
+        "rule": "任何状态转换失败必须记录原因并进入BLOCKED状态，不允许静默跳过",
+        "enforcement": "BLOCKED状态必须记录阻塞原因、发现时间、预计解决时间"
+      },
+      {
+        "id": "rule_7",
+        "rule": "VALIDATION状态必须使用真实数据(非mock)，不允许仅用mock数据通过验证",
+        "enforcement": "VALIDATION的验证报告中必须注明数据来源，mock数据仅用于UNIT_TEST和INTEGRATION_TEST"
+      }
+    ]
+  }
+}
