@@ -411,8 +411,10 @@ async def enhance_images(
 ):
     from doc_parser.core.chapter import TOCExtractor, ChapterSplitter
     from doc_parser.core.image import ImageEnhancer, ImageEnhancerConfig
-    from doc_parser.core.image.ocr_enhance import DummyOCREngine
-    from doc_parser.core.image.vlm_describe import DummyVLMClient
+    from doc_parser.core.image.ocr_enhance import MinerUOCREngine
+    from doc_parser.core.image.vlm_describe import OpenAICompatibleVLM
+    from doc_parser.pipeline.base import PipelineResult, ContentItem, ElementType
+    from doc_parser.api.app import _get_vlm_client
 
     registry: PipelineRegistry = _get_registry()
     data = await file.read()
@@ -421,12 +423,62 @@ async def enhance_images(
     ocr_on = enable_ocr.lower() in ("true", "1", "yes")
     vlm_on = enable_vlm.lower() in ("true", "1", "yes")
 
+    # 检查文件类型
+    file_ext = filename.split(".")[-1].lower() if filename else ""
+    image_extensions = {"png", "jpg", "jpeg", "gif", "bmp", "webp"}
+    
+    # 对于图片文件，禁用 OCR（MinerU 只支持 PDF）
+    if file_ext in image_extensions:
+        ocr_on = False
+        logger.info("Image file detected, OCR disabled (MinerU only supports PDF)")
+
+    # 获取真实引擎
+    ocr_engine = MinerUOCREngine() if ocr_on else None
+    vlm_client = _get_vlm_client() if vlm_on else None
+
     config = ImageEnhancerConfig(enable_ocr=ocr_on, enable_vlm=vlm_on)
 
     try:
-        result = await registry.parse_bytes(data, filename, engine=engine)
-        enhancer = ImageEnhancer(config=config)
-        enhanced = await enhancer.enhance(result)
+        if file_ext in image_extensions:
+            # 直接处理图片文件，不经过 Pipeline
+            import tempfile
+            import os
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_ext}") as f:
+                f.write(data)
+                temp_path = f.name
+            
+            # 创建模拟的 PipelineResult
+            content_item = ContentItem(
+                type=ElementType.IMAGE,
+                text="",
+                img_path=temp_path,
+                page_idx=0,
+                reading_order=0,
+            )
+            result = PipelineResult(
+                document_id=filename,
+                content_list=[content_item],
+            )
+            
+            enhancer = ImageEnhancer(
+                config=config,
+                ocr_engine=ocr_engine,
+                vlm_client=vlm_client,
+            )
+            enhanced = await enhancer.enhance(result)
+            
+            # 注意：不删除临时文件，让操作系统自动清理
+            # 如果需要清理，可以添加后台任务延迟删除
+        else:
+            # PDF 文件，通过 Pipeline 解析
+            result = await registry.parse_bytes(data, filename, engine=engine)
+            enhancer = ImageEnhancer(
+                config=config,
+                ocr_engine=ocr_engine,
+                vlm_client=vlm_client,
+            )
+            enhanced = await enhancer.enhance(result)
 
         return ImageEnhanceResponse(
             document_id=result.document_id,

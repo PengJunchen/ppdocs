@@ -34,12 +34,27 @@ class ImageEnhancer:
         config: Optional[ImageEnhancerConfig] = None,
     ):
         self._config = config or ImageEnhancerConfig()
-        self._ocr_enhancer = OCREnhancer(engine=ocr_engine) if self._config.enable_ocr else None
-        self._vlm_describer = VLMDescriber(
-            client=vlm_client,
-            max_concurrency=self._config.max_concurrency,
-            custom_prompt=self._config.vlm_prompt,
-        ) if self._config.enable_vlm else None
+        
+        # 使用传入的引擎或创建真实引擎
+        if self._config.enable_ocr:
+            if ocr_engine is None:
+                from doc_parser.core.image.ocr_enhance import MinerUOCREngine
+                ocr_engine = MinerUOCREngine()
+            self._ocr_enhancer = OCREnhancer(engine=ocr_engine)
+        else:
+            self._ocr_enhancer = None
+        
+        if self._config.enable_vlm:
+            if vlm_client is None:
+                from doc_parser.core.image.vlm_describe import OpenAICompatibleVLM
+                vlm_client = OpenAICompatibleVLM()
+            self._vlm_describer = VLMDescriber(
+                client=vlm_client,
+                max_concurrency=self._config.max_concurrency,
+                custom_prompt=self._config.vlm_prompt,
+            )
+        else:
+            self._vlm_describer = None
 
     async def enhance(self, result: PipelineResult) -> list[EnhancedImage]:
         enhanced: list[EnhancedImage] = []

@@ -14,6 +14,36 @@ from doc_parser.api.task_manager import TaskManager
 from doc_parser.pipeline.base import PipelineConfig
 from doc_parser.pipeline.registry import PipelineRegistry, create_default_registry
 
+def setup_logging():
+    import logging
+    
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    
+    # 避免重复添加处理器
+    if root_logger.handlers:
+        return
+    
+    # 创建控制台处理器
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    
+    # 设置日志格式
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    console_handler.setFormatter(formatter)
+    
+    # 添加处理器到根日志器
+    root_logger.addHandler(console_handler)
+    
+    # 禁用 watchfiles 的日志（避免 "1 change detected" 噪音）
+    watchfiles_logger = logging.getLogger("watchfiles.main")
+    watchfiles_logger.setLevel(logging.WARNING)
+    watchfiles_logger.propagate = False
+
+setup_logging()
+
 logger = logging.getLogger(__name__)
 
 _registry: Optional[PipelineRegistry] = None
@@ -58,6 +88,7 @@ def get_embedding_generator() -> Any:
 
 
 _llm_client: Any = None
+_vlm_client: Any = None
 
 
 def _get_llm_client() -> Any:
@@ -74,6 +105,20 @@ def get_llm_client() -> Any:
     return _llm_client
 
 
+def _get_vlm_client() -> Any:
+    if _vlm_client is not None:
+        return _vlm_client
+    from doc_parser.core.image.vlm_describe import DummyVLMClient
+    return DummyVLMClient()
+
+
+def get_vlm_client() -> Any:
+    if _vlm_client is None:
+        from doc_parser.core.image.vlm_describe import DummyVLMClient
+        return DummyVLMClient()
+    return _vlm_client
+
+
 def set_globals(
     registry: PipelineRegistry,
     task_manager: TaskManager,
@@ -81,14 +126,16 @@ def set_globals(
     vector_store: Any = None,
     embedding_generator: Any = None,
     llm_client: Any = None,
+    vlm_client: Any = None,
 ) -> None:
-    global _registry, _task_manager, _kg_bridge, _vector_store, _embedding_generator, _llm_client
+    global _registry, _task_manager, _kg_bridge, _vector_store, _embedding_generator, _llm_client, _vlm_client
     _registry = registry
     _task_manager = task_manager
     _kg_bridge = kg_bridge
     _vector_store = vector_store
     _embedding_generator = embedding_generator
     _llm_client = llm_client
+    _vlm_client = vlm_client
 
 
 @asynccontextmanager
@@ -115,6 +162,7 @@ def create_app(**kwargs: Any) -> FastAPI:
     pipeline_cfg = cfg.get("pipeline", {})
     llm_cfg = cfg.get("llm", {})
     embedding_cfg = cfg.get("embedding", {})
+    vlm_cfg = cfg.get("vlm", {})
     tm_cfg = cfg.get("task_manager", {})
 
     mineru_url = kwargs.get("mineru_url") or os.environ.get("DOCPARSER_MINERU_URL", pipeline_cfg.get("mineru_url", "http://10.0.40.153:18089"))
@@ -145,6 +193,20 @@ def create_app(**kwargs: Any) -> FastAPI:
             )
             logger.info("LLM client configured: %s (model=%s)", llm_base_url, llm_model)
 
+    vlm_client = kwargs.get("vlm_client")
+    if vlm_client is None:
+        vlm_base_url = kwargs.get("vlm_base_url") or os.environ.get("DOCPARSER_VLM_URL", vlm_cfg.get("base_url", ""))
+        vlm_api_key = kwargs.get("vlm_api_key") or os.environ.get("DOCPARSER_VLM_API_KEY", vlm_cfg.get("api_key", ""))
+        vlm_model = kwargs.get("vlm_model") or os.environ.get("DOCPARSER_VLM_MODEL", vlm_cfg.get("model", "qwen-vl-max"))
+        if vlm_base_url:
+            from doc_parser.core.image.vlm_describe import OpenAICompatibleVLM
+            vlm_client = OpenAICompatibleVLM(
+                base_url=vlm_base_url,
+                api_key=vlm_api_key,
+                model=vlm_model,
+            )
+            logger.info("VLM client configured: %s (model=%s)", vlm_base_url, vlm_model)
+
     kg_bridge = kwargs.get("kg_bridge")
     vector_store = kwargs.get("vector_store")
     embedding_generator = kwargs.get("embedding_generator")
@@ -174,6 +236,7 @@ def create_app(**kwargs: Any) -> FastAPI:
         vector_store=vector_store,
         embedding_generator=embedding_generator,
         llm_client=llm_client,
+        vlm_client=vlm_client,
     )
 
     app = FastAPI(

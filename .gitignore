@@ -15,7 +15,7 @@ ENV/
 
 # IDE
 .idea/
-.vscode/
+# .vscode/
 *.swp
 *.swo
 
@@ -53,3 +53,5 @@ Desktop.ini
 .DS_Store
 
 config.json
+
+render-markdown/

@@ -49,10 +49,15 @@ class OpenAICompatibleVLM(BaseVLMClient):
         import json
 
         if not self._base_url:
+            logger.warning("VLM base_url not configured, skipping VLM describe")
             return VLMDescriptionResult(model=self._model)
 
         use_prompt = prompt or _VLM_PROMPT
         image_url = await self._encode_image(image_path)
+        
+        logger.info(f"VLM describe starting for: {image_path}")
+        logger.info(f"Image data size: {len(image_url)} bytes (base64 encoded)")
+        logger.info(f"Using model: {self._model}")
 
         payload = {
             "model": self._model,
@@ -73,8 +78,51 @@ class OpenAICompatibleVLM(BaseVLMClient):
             "Authorization": f"Bearer {self._api_key}",
         }
 
+        # 打印完整的请求体
+        import json
+        import os
+        
+        # 通过环境变量控制是否完整输出图片数据
+        full_log = os.environ.get("DOCPARSER_VLM_FULL_LOG", "false").lower() == "true"
+        
+        if full_log:
+            # 完整输出（包括完整的 base64 图片数据）
+            log_payload = {
+                "model": self._model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": use_prompt},
+                            {"type": "image_url", "image_url": {"url": image_url}},
+                        ],
+                    }
+                ],
+                "max_tokens": self._max_tokens,
+            }
+            logger.info(f"VLM request body (full): {json.dumps(log_payload, ensure_ascii=False)}")
+        else:
+            # 截断输出（只显示图片大小）
+            log_payload = {
+                "model": self._model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": use_prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/... (base64, {len(image_url)} bytes)"}},
+                        ],
+                    }
+                ],
+                "max_tokens": self._max_tokens,
+            }
+            logger.info(f"VLM request body: {json.dumps(log_payload, ensure_ascii=False, indent=2)}")
+        
+        logger.info(f"VLM headers: {dict(headers)}")
+
         try:
             async with httpx.AsyncClient(timeout=120) as client:
+                logger.debug(f"Sending request to: {self._base_url}/chat/completions")
                 resp = await client.post(
                     f"{self._base_url}/chat/completions",
                     json=payload,
@@ -87,10 +135,11 @@ class OpenAICompatibleVLM(BaseVLMClient):
             parsed = self._parse_response(content)
             parsed.model = self._model
             parsed.confidence = 0.8
+            logger.info(f"VLM describe completed successfully for: {image_path}")
             return parsed
 
         except Exception as exc:
-            logger.warning("VLM describe failed for %s: %s", image_path, exc)
+            logger.error(f"VLM describe failed for {image_path}: {exc}", exc_info=True)
             return VLMDescriptionResult(model=self._model)
 
     async def _encode_image(self, image_path: str) -> str:
