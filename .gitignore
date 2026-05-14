@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Node
+node_modules/
+
+# Output (generated reports/logs)
+output/
+
+# Compare directory (doc comparison artifacts)
+docs/*
+docs/compare/
+
+# Reference repos (large, not tracked)
+ref/
+
+# Uploads
+.uploads/
+
+# Trae IDE
+.trae/
+
+# PDFTest (test data, large binary files)
+PDFTest/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
