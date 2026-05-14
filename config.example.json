@@ -1,0 +1,84 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000,
+    "reload": true
+  },
+  "pipeline": {
+    "mineru_url": "http://your-mineru-server:18089",
+    "docling_url": "http://your-docling-server/v1",
+    "docling_api_key": "your-docling-api-key",
+    "docling_auth_header": "X-Api-Key",
+    "docling_auth_prefix": ""
+  },
+  "llm": {
+    "base_url": "https://your-llm-server/v1",
+    "api_key": "your-llm-api-key",
+    "model": "your-llm-model-name",
+    "max_tokens": 4096,
+    "temperature": 0.3
+  },
+  "embedding": {
+    "base_url": "https://your-embedding-server/v1",
+    "api_key": "your-embedding-api-key",
+    "model": "bge-large-zh-v1.5",
+    "dim": 1024
+  },
+  "reranking": {
+    "base_url": "https://your-reranking-server",
+    "api_key": "your-reranking-api-key",
+    "model": "bge-reranker-v2-m3"
+  },
+  "ocr": {
+    "enabled": false,
+    "engine": "dummy",
+    "api_url": "http://your-ocr-server",
+    "api_key": "your-ocr-api-key"
+  },
+  "vlm": {
+    "enabled": false,
+    "base_url": "https://your-vlm-server/v1",
+    "api_key": "your-vlm-api-key",
+    "model": "your-vlm-model-name",
+    "max_concurrency": 4
+  },
+  "task_manager": {
+    "ttl_seconds": 3600,
+    "max_tasks": 1000
+  },
+  "orchestrator": {
+    "enable_enhance": true,
+    "enable_read": true,
+    "enable_kg": true,
+    "enable_vectorize": false,
+    "enhance_config": {
+      "enable_ocr": false,
+      "enable_vlm": true
+    },
+    "chunker_config": {
+      "chunk_size": 1200,
+      "chunk_overlap": 200
+    }
+  },
+  "storage": {
+    "vector_store": "memory",
+    "graph_store": "memory",
+    "milvus": {
+      "host": "localhost",
+      "port": 19530
+    },
+    "qdrant": {
+      "host": "localhost",
+      "port": 6333
+    },
+    "neo4j": {
+      "uri": "bolt://localhost:7687",
+      "user": "neo4j",
+      "password": "your-neo4j-password"
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+  }
+}
